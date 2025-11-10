@@ -1,0 +1,6 @@
+Release Notes for SQLcl Release 25.3.0
+----------------------------------------------------
+
+The release notes are available at 
+https://www.oracle.com/tools/sqlcl/sqlcl-relnotes-25.3.0.html
+

@@ -22,4 +22,7 @@ anyio>=4.4,<5
 httpx>=0.27
 plotly
 matplotlib
-#geopandas
+geopandas
+streamlit
+streamlit-autorefresh
+graphviz

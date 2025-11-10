@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TJX ER Diagram</title>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+    <script>
+        mermaid.initialize({ startOnLoad: true });
+    </script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f4f4f9;
+        }
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <h1>TJX Operational Analytics ER Diagram</h1>
+    <div class="mermaid">
+erDiagram
+    %% POS_DATA Schema
+    Transactions {
+        string Transaction_ID PK
+        string Store_ID FK
+        datetime Date_Time
+        float Total_Amount
+        string Payment_Method
+    }
+    Transaction_Items {
+        string Transaction_ID FK
+        string Product_ID FK
+        int Quantity
+        float Unit_Price
+        float Discount_Applied
+    }
+    Stores {
+        string Store_ID PK
+        string Store_Name
+        string Location
+        string Region
+        string Brand
+    }
+
+    %% MERCHANDISE Schema
+    Products {
+        string Product_ID PK
+        string Product_Name
+        string Category
+        string Brand
+        float Base_Price
+        string Supplier_ID
+    }
+    Pricing_History {
+        string Product_ID FK
+        string Store_ID FK
+        datetime Date
+        float Adjusted_Price
+        float Discount_Percentage
+    }
+    Product_Hierarchy {
+        string Product_ID FK
+        string Department
+        string Subcategory
+        boolean Seasonal_Flag
+    }
+
+    %% INVENTORY Schema
+    Stock_Levels {
+        string Store_ID FK
+        string Product_ID FK
+        int Current_Stock
+        int Reorder_Threshold
+        datetime Last_Restock_Date
+    }
+    Allocation_Records {
+        string Allocation_ID PK
+        string Product_ID FK
+        string Source_Warehouse_ID FK
+        string Destination_Store_ID FK
+        int Quantity
+        datetime Date
+    }
+    Warehouse_Stock {
+        string Warehouse_ID PK
+        string Product_ID FK
+        int Stock_Quantity
+        datetime Restock_Schedule
+    }
+
+    %% CUSTOMER_ANALYTICS Schema
+    Customers {
+        string Customer_ID PK
+        string Age_Group
+        string Location_Preference
+        string Loyalty_Status
+    }
+    Purchase_History {
+        string Customer_ID FK
+        string Transaction_ID FK
+        string Product_ID FK
+        datetime Date
+        string Store_ID FK
+    }
+    Customer_Segments {
+        string Segment_ID PK
+        string Segment_Name
+        string Description
+    }
+
+    %% DEMAND_FORECAST Schema
+    Historical_Sales {
+        string Product_ID FK
+        string Store_ID FK
+        datetime Date
+        int Quantity_Sold
+        float Revenue
+    }
+    External_Factors {
+        datetime Date
+        string Store_ID FK
+        string Event_Type
+        string Weather_Condition
+        float Impact_Score
+    }
+    Forecast_Results {
+        string Product_ID FK
+        string Store_ID FK
+        datetime Forecast_Date
+        int Predicted_Demand
+        float Confidence_Score
+    }
+
+    %% FINANCIAL_REPORTING Schema
+    Sales_Revenue {
+        string Store_ID FK
+        datetime Date
+        float Total_Revenue
+        int Total_Transactions
+        float Average_Transaction_Value
+    }
+    Cost_Analysis {
+        string Product_ID FK
+        string Supplier_ID
+        float Purchase_Cost
+        float Selling_Price
+        float Margin_Percentage
+    }
+    Store_Performance {
+        string Store_ID FK
+        datetime Date
+        float Revenue
+        float Cost_of_Goods_Sold
+        float Profit_Margin
+    }
+
+    %% Relationships
+    Transactions ||--|{ Transaction_Items : "contains"
+    Transactions ||--|| Stores : "occurs_in"
+    Transaction_Items ||--|| Products : "includes"
+    Pricing_History ||--|| Products : "applies_to"
+    Pricing_History ||--|| Stores : "in_store"
+    Product_Hierarchy ||--|| Products : "classifies"
+    Stock_Levels ||--|| Stores : "in_store"
+    Stock_Levels ||--|| Products : "of_product"
+    Allocation_Records ||--|| Products : "allocates"
+    Allocation_Records ||--|| Warehouse_Stock : "from_warehouse"
+    Allocation_Records ||--|| Stores : "to_store"
+    Warehouse_Stock ||--|| Products : "stocks"
+    Purchase_History ||--|| Customers : "made_by"
+    Purchase_History ||--|| Transactions : "from_transaction"
+    Purchase_History ||--|| Products : "of_product"
+    Purchase_History ||--|| Stores : "in_store"
+    Customers ||--|| Customer_Segments : "belongs_to"
+    Historical_Sales ||--|| Products : "for_product"
+    Historical_Sales ||--|| Stores : "in_store"
+    External_Factors ||--|| Stores : "affects_store"
+    Forecast_Results ||--|| Products : "for_product"
+    Forecast_Results ||--|| Stores : "in_store"
+    Sales_Revenue ||--|| Stores : "for_store"
+    Cost_Analysis ||--|| Products : "for_product"
+    Store_Performance ||--|| Stores : "for_store"
+    </div>
+</body>
+</html>

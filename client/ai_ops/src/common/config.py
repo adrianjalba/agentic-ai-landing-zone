@@ -56,6 +56,12 @@ MCP_TRANSPORT_DBTOOLS= os.getenv("MCP_TRANSPORT_DBTOOLS","stdio") #"stdio" #stre
 MCP_SSE_HOST_DBTOOLS=os.getenv("MCP_SSE_HOST_DBTOOLS","0.0.0.0")
 MCP_SSE_PORT_DBTOOLS=os.getenv("MCP_SSE_PORT_DBTOOLS","8002")
 
+# ────────────────────────────────────────────────────────────────
+# Configure AIDP Connections using JDBC drivers
+# ────────────────────────────────────────────────────────────────
 
-
+AIDP_JDBC_URL=os.getenv("AIDP_JDBC_URL")
+AIDP_JDBC_JAR=os.getenv("AIDP_JDBC_JAR")
+AIDP_OCI_CONFIG_FILE=os.getenv("AIDP_OCI_CONFIG_FILE")
+AIDP_OCI_PROFILE=os.getenv("AIDP_OCI_PROFILE")
 

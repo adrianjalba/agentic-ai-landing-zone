@@ -9,9 +9,11 @@ This agent integrates with Oracle DB SQLCl MCP Server, allowing NL conversation 
 https://docs.oracle.com/en/database/oracle/sql-developer-command-line/25.2/sqcug/using-oracle-sqlcl-mcp-server.html
 """
 
+
 import os, asyncio, warnings
 from contextlib import AsyncExitStack
 from pathlib import Path
+from typing import Any, List
 
 warnings.filterwarnings("ignore")
 import matplotlib
@@ -20,24 +22,31 @@ matplotlib.use("Agg")
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field
 
-from langchain_core.messages import HumanMessage, AIMessage
-from langchain_core.agents import AgentFinish
-from langchain.agents import initialize_agent, AgentType
-from langchain_core.tools import StructuredTool
+# Messages & tools
+from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
+from langchain_core.tools import StructuredTool, BaseTool
 
+# LangGraph (modern)
+from langgraph.prebuilt import create_react_agent
+
+# MCP
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
-
 from langchain_mcp_adapters.tools import load_mcp_tools
 
+# Project imports (unchanged)
+#from src.llm.oci_genai import initialize_llm
 from src.llm.oci_genai import initialize_llm
 from src.prompt_engineering.topics.db_operator import promt_oracle_db_operator
 from src.tools.rag_agent import _rag_agent_service
 from src.tools.python_scratchpad import run_python
-from src.common.config import *  # expects SQLCLI_MCP_PROFILE, FILE_SYSTEM_ACCESS_KEY, TAVILY_MCP_SERVER
+from src.common.config import *  # expects SQLCLI_MCP_PROFILE, FILE_SYSTEM_ACCESS_KEY, TAVILY_MCP_SERVER, MCP_* vars
 from src.utils.mcp_helper_connection import safe_connect
 
-load_dotenv()
+import json
+from typing import List, Dict, Any
+from langchain_core.tools import BaseTool
+from langchain_core.runnables import RunnableLambda, RunnablePassthrough
 
 # ────────────────────────────────────────────────────────
 # 1) Model
@@ -81,6 +90,46 @@ print(url_dbtools)
 # ────────────────────────────────────────────────────────
 # 3) Helpers
 # ────────────────────────────────────────────────────────
+
+def build_meta_agent(llm, tools: List[BaseTool]):
+    name2tool = {t.name: t for t in tools}
+
+    def decide(messages: List[Any]) -> Dict[str, Any]:
+        resp = llm.invoke(messages).content
+        try:
+            return json.loads(resp)
+        except Exception:
+            # force final if model didn't follow format
+            return {"final": resp}
+
+    def maybe_run_tool(step: Dict[str, Any]) -> Dict[str, Any]:
+        if "tool" in step:
+            t = name2tool.get(step["tool"])
+            if not t:
+                return {"observation": f"Unknown tool: {step['tool']}"}
+            out = t.invoke(step.get("args", {}))
+            return {"observation": out}
+        return step  # already {"final": ...}
+
+    decide_node = RunnableLambda(decide)
+    exec_node = RunnableLambda(maybe_run_tool)
+
+    def _pick_messages(x):
+        # Accept either {"messages": [...] } or just [...]
+        if isinstance(x, dict) and "messages" in x:
+            return x["messages"]
+        if isinstance(x, list):
+            return x
+        raise TypeError(f"Expected list[BaseMessage] or dict with 'messages', got {type(x)}")
+
+    flow = (
+        RunnableLambda(_pick_messages)
+        | decide_node
+        | exec_node
+    )
+    return flow
+
+
 
 def is_sql_tool(tool) -> bool:
     nm = getattr(tool, "name", "") or ""
@@ -172,8 +221,8 @@ async def main() -> None:
         all_tools += await load_tools_from_session("Oracle SQLcl", adb_session)
         all_tools += await load_tools_from_session("Tavily", tavily_session)
         all_tools += await load_tools_from_session("Local File Server", local_session)
-        #all_tools += await load_tools_from_session("redis", redis_session)
-        #all_tools += await load_tools_from_session("dbtools", dbtools_session)
+        all_tools += await load_tools_from_session("redis", redis_session)
+        all_tools += await load_tools_from_session("dbtools", dbtools_session)
 
 
         # Wrap SQL tools with confirmation
@@ -202,14 +251,16 @@ async def main() -> None:
             AUTO_APPROVE = 'N'
 
         # Build agent (works even if some servers are missing)
-        agent = initialize_agent(
-            tools=final_tools,
-            llm=model,
-            agent=AgentType.STRUCTURED_CHAT_ZERO_SHOT_REACT_DESCRIPTION,
-            handle_parsing_errors=True,
-            verbose=True,
-            agent_kwargs={"prefix": promt_oracle_db_operator},
-        )
+        # agent = initialize_agent(
+        #     tools=final_tools,
+        #     llm=model,
+        #     agent=AgentType.STRUCTURED_CHAT_ZERO_SHOT_REACT_DESCRIPTION,
+        #     handle_parsing_errors=True,
+        #     verbose=True,
+        #     agent_kwargs={"prefix": promt_oracle_db_operator},
+        # )
+
+        agent = build_meta_agent(model, final_tools)
 
 
         # REPL
@@ -226,7 +277,12 @@ async def main() -> None:
 
             try:
                 #await agent.ainvoke({f"store this data in redis cache using hset tool : {history}", 101})
-                ai_response = await agent.ainvoke({"input": history})
+                
+                msgs = [SystemMessage(content=promt_oracle_db_operator), HumanMessage(content=user_input)]
+                ai_response = await asyncio.to_thread(agent.invoke, msgs)        # ✅ no TypeError
+
+
+                # ai_response = await agent.ainvoke({"input": history})
                 
                 
                 # Normalize output
@@ -240,35 +296,41 @@ async def main() -> None:
 
 # Normalize output
 def normalize_output(ai_response, history):
-    
-    
+    # Handle our planner shapes first
     if isinstance(ai_response, dict):
-        msg = ai_response.get("output")
-    elif isinstance(ai_response, AgentFinish):
-        msg = ai_response.return_values.get("output")
-    else:
-        msg = ai_response
+        if "final" in ai_response and isinstance(ai_response["final"], str):
+            out = AIMessage(content=ai_response["final"])
+            history.append(out)
+            print(f"AI: {out.content}\n")
+            return out.content
+        if "observation" in ai_response:
+            obs = str(ai_response["observation"])
+            out = AIMessage(content=f"[tool observation] {obs}")
+            history.append(out)
+            print(f"AI: {out.content}\n")
+            return out.content
+        # legacy shape
+        if "content" in ai_response:
+            out = AIMessage(content=str(ai_response["content"]))
+            history.append(out)
+            print(f"AI: {out.content}\n")
+            return out.content
 
-    eval_msg=""
-    if isinstance(msg, AIMessage):
-        history.append(msg)
-        eval_msg= f"AI: {msg.content}\n"
-        print(eval_msg)
-    elif isinstance(msg, str):
-        out = AIMessage(content=msg)
-        history.append(out)
-        eval_msg= f"AI: {msg}\n"
-        print(eval_msg)
-    elif isinstance(msg, dict) and "content" in msg:
-        out = AIMessage(content=msg["content"])
-        history.append(out)
-        eval_msg= f"AI: {out.content}\n"
-        print(eval_msg)
-    else:
-        eval_msg= "AI: <<no response>>\n"
-        print(eval_msg)
+    # Fallbacks
+    if isinstance(ai_response, AIMessage):
+        history.append(ai_response)
+        print(f"AI: {ai_response.content}\n")
+        return ai_response.content
 
-    return eval_msg
+    if isinstance(ai_response, str):
+        out = AIMessage(content=ai_response)
+        history.append(out)
+        print(f"AI: {ai_response}\n")
+        return ai_response
+
+    print("AI: <<no response>>\n")
+    return "<<no response>>"
+
 
 if __name__ == "__main__":
     asyncio.run(main())

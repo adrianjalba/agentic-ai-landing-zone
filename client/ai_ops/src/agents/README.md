@@ -97,3 +97,7 @@ conn -save demo_mcp_sys -savepwd sys/Oracle_123@localhost:1521/FREEPDB1 as sysdb
   conn -n conn_name
   
   CONNMGR DELETE -conn myconn
+
+  #### STREAMLIT
+
+  export PYTHONPATH=/Users/aojah/Documents/GenAI-CoE/Agentic-Framework/source-code/agentic-ai-landing-zone-master/agentic-ai-landing-zone/client/ai_ops
